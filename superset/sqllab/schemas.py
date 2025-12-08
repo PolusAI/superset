@@ -160,3 +160,37 @@ class SQLLabBootstrapSchema(Schema):
         values=fields.Nested(QueryResultSchema),
     )
     tab_state_ids = fields.List(fields.String())
+
+
+class SaveToWorkspaceSchema(Schema):
+    """Schema for saving SQL query results to workspace storage."""
+
+    filename = fields.String(
+        required=True,
+        metadata={
+            "description": "The filename for the CSV file (without path). "
+            "Will be sanitized to prevent path traversal."
+        },
+    )
+    subfolder = fields.String(
+        load_default="sql_exports",
+        metadata={
+            "description": "Subfolder within ~/work/ to save the file. "
+            "Defaults to 'sql_exports'."
+        },
+    )
+    streaming = fields.Boolean(
+        load_default=False,
+        metadata={
+            "description": "If true, use streaming mode for large datasets. "
+            "This re-executes the query and writes rows in batches to minimize memory usage."
+        },
+    )
+
+
+class SaveToWorkspaceResponseSchema(Schema):
+    """Schema for save to workspace response."""
+
+    status = fields.String(metadata={"description": "Status of the operation"})
+    path = fields.String(metadata={"description": "Full path where the file was saved"})
+    row_count = fields.Integer(metadata={"description": "Number of rows written to the file"})
