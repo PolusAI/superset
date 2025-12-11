@@ -457,13 +457,17 @@ const Chart = props => {
           slice.slice_id,
           nextTabId,
         );
-        const url = mountExploreUrl(null, {
+        const extraSearch = {
           [URL_PARAMS.formDataKey.name]: key,
           [URL_PARAMS.sliceId.name]: slice.slice_id,
-        });
+        };
         if (isOpenInNewTab) {
+          // Use full URL with app root for window.open
+          const url = mountExploreUrl(null, extraSearch, false, true);
           window.open(url, '_blank', 'noreferrer');
         } else {
+          // Use relative URL without app root for history.push (Router adds basename)
+          const url = mountExploreUrl(null, extraSearch, false, false);
           history.push(url);
         }
       } catch (error) {
