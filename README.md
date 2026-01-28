@@ -19,7 +19,9 @@ under the License.
 
 # JupyterHub Integration for Apache Superset
 
-see [JUPYTERHUB_INTEGRATION_FIX.md](JUPYTERHUB_INTEGRATION_FIX.md) for more details.
+See [JUPYTERHUB_INTEGRATION_FIX.md](notebookshub/docs/JUPYTERHUB_INTEGRATION_FIX.md) for more details.
+
+See [SAVE_TO_WORKSPACE_FEATURE.md](notebookshub/docs/SAVE_TO_WORKSPACE_FEATURE.md) for more details on the "Save to Workspace" feature for SQL query results.
 
 # Superset
 
