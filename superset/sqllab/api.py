@@ -31,6 +31,10 @@ from superset.commands.sql_lab.estimate import QueryEstimationCommand
 from superset.commands.sql_lab.execute import CommandResult, ExecuteSqlCommand
 from superset.commands.sql_lab.export import SqlResultExportCommand
 from superset.commands.sql_lab.results import SqlExecutionResultsCommand
+from superset.commands.sql_lab.save_to_workspace import (
+    SqlResultSaveToWorkspaceCommand,
+    get_export_progress,
+)
 from superset.commands.sql_lab.streaming_export_command import (
     StreamingSqlResultExportCommand,
 )
@@ -54,6 +58,8 @@ from superset.sqllab.schemas import (
     ExecutePayloadSchema,
     FormatQueryPayloadSchema,
     QueryExecutionResponseSchema,
+    SaveToWorkspaceResponseSchema,
+    SaveToWorkspaceSchema,
     sql_lab_get_results_schema,
     SQLLabBootstrapSchema,
 )
@@ -85,6 +91,7 @@ class SqlLabRestApi(BaseSupersetApi):
     estimate_model_schema = EstimateQueryCostSchema()
     execute_model_schema = ExecutePayloadSchema()
     format_model_schema = FormatQueryPayloadSchema()
+    save_to_workspace_schema = SaveToWorkspaceSchema()
 
     apispec_parameter_schemas = {
         "sql_lab_get_results_schema": sql_lab_get_results_schema,
@@ -95,6 +102,8 @@ class SqlLabRestApi(BaseSupersetApi):
         ExecutePayloadSchema,
         FormatQueryPayloadSchema,
         QueryExecutionResponseSchema,
+        SaveToWorkspaceResponseSchema,
+        SaveToWorkspaceSchema,
         SQLLabBootstrapSchema,
     )
 
@@ -437,6 +446,131 @@ class SqlLabRestApi(BaseSupersetApi):
         )
 
         return response
+
+    @expose("/save_to_workspace/<string:client_id>/", methods=("POST",))
+    @protect()
+    @statsd_metrics
+    @requires_json
+    @permission_name("export_csv")
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.save_to_workspace",
+        log_to_statsd=False,
+    )
+    def save_to_workspace(self, client_id: str) -> FlaskResponse:
+        """Save SQL query results to user's workspace storage.
+        ---
+        post:
+          summary: Save SQL query results to workspace storage
+          description: >-
+            Saves the results of a SQL query execution directly to the user's
+            persistent workspace storage (~/work/) instead of downloading to
+            the browser. Supports streaming mode for large datasets.
+          parameters:
+          - in: path
+            schema:
+              type: string
+            name: client_id
+            description: The SQL query result identifier
+          requestBody:
+            description: Save options (filename, subfolder, streaming)
+            required: true
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/SaveToWorkspaceSchema'
+          responses:
+            200:
+              description: File saved successfully
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/SaveToWorkspaceResponseSchema'
+            400:
+              $ref: '#/components/responses/400'
+            401:
+              $ref: '#/components/responses/401'
+            403:
+              $ref: '#/components/responses/403'
+            404:
+              $ref: '#/components/responses/404'
+            500:
+              $ref: '#/components/responses/500'
+        """
+        try:
+            data = self.save_to_workspace_schema.load(request.json)
+        except ValidationError as error:
+            return self.response_400(message=error.messages)
+
+        result = SqlResultSaveToWorkspaceCommand(
+            client_id=client_id,
+            filename=data["filename"],
+            subfolder=data.get("subfolder", "sql_exports"),
+            streaming=data.get("streaming", False),
+        ).run()
+
+        event_info = {
+            "event_type": "data_save_to_workspace",
+            "client_id": client_id,
+            "row_count": result["row_count"],
+            "path": result["path"],
+            "streaming": data.get("streaming", False),
+        }
+        event_rep = repr(event_info)
+        logger.debug(
+            "Results saved to workspace: %s", event_rep, extra={"superset_event": event_info}
+        )
+
+        return self.response(200, **result)
+
+    @expose("/save_to_workspace_progress/<string:client_id>/", methods=("GET",))
+    @protect()
+    @statsd_metrics
+    @permission_name("export_csv")
+    def get_save_to_workspace_progress(self, client_id: str) -> FlaskResponse:
+        """Get progress of an ongoing save to workspace operation.
+        ---
+        get:
+          summary: Get export progress
+          description: >-
+            Polls the progress of an ongoing streaming export operation.
+            Returns processed rows, total rows, and status.
+          parameters:
+          - in: path
+            schema:
+              type: string
+            name: client_id
+            description: The SQL query result identifier
+          responses:
+            200:
+              description: Progress information
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      processed:
+                        type: integer
+                        description: Number of rows processed so far
+                      total:
+                        type: integer
+                        description: Total rows to process (-1 if unknown)
+                      status:
+                        type: string
+                        description: Export status (counting, exporting, completed)
+            404:
+              description: No export in progress for this client_id
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        """
+        progress = get_export_progress(client_id)
+        if progress is None:
+            return self.response_404()
+        return self.response(200, **progress)
 
     @expose("/results/")
     @protect()

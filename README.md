@@ -17,6 +17,12 @@ specific language governing permissions and limitations
 under the License.
 -->
 
+# JupyterHub Integration for Apache Superset
+
+See [JUPYTERHUB_INTEGRATION_FIX.md](notebookshub/docs/JUPYTERHUB_INTEGRATION_FIX.md) for more details.
+
+See [SAVE_TO_WORKSPACE_FEATURE.md](notebookshub/docs/SAVE_TO_WORKSPACE_FEATURE.md) for more details on the "Save to Workspace" feature for SQL query results.
+
 # Superset
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/license/apache-2-0)

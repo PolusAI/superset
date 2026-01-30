@@ -267,6 +267,9 @@ def get_environment_tag() -> dict[str, Any]:
 
 
 def menu_data(user: User) -> dict[str, Any]:
+    # Get JupyterHub prefix from environment for user menu URLs
+    jupyterhub_prefix = os.environ.get('JUPYTERHUB_SERVICE_PREFIX', '').rstrip('/')
+    
     languages = {
         lang: {**appbuilder.languages[lang], "url": appbuilder.get_url_for_locale(lang)}
         for lang in appbuilder.languages
@@ -277,6 +280,19 @@ def menu_data(user: User) -> dict[str, Any]:
 
     # Get centralized version metadata
     version_metadata = get_version_metadata()
+    
+    # Add JupyterHub prefix to user menu URLs (these are hardcoded and don't use url_for)
+    user_info_url = None
+    if not is_feature_enabled("MENU_HIDE_USER_INFO"):
+        user_info_url = f"{jupyterhub_prefix}/user_info/" if jupyterhub_prefix else "/user_info/"
+    
+    user_logout_url = appbuilder.get_url_for_logout
+    if jupyterhub_prefix and user_logout_url.startswith("/") and not user_logout_url.startswith(jupyterhub_prefix):
+        user_logout_url = jupyterhub_prefix + user_logout_url
+        
+    user_login_url = appbuilder.get_url_for_login
+    if jupyterhub_prefix and user_login_url.startswith("/") and not user_login_url.startswith(jupyterhub_prefix):
+        user_login_url = jupyterhub_prefix + user_login_url
 
     return {
         "menu": appbuilder.menu.get_data(),
@@ -303,11 +319,9 @@ def menu_data(user: User) -> dict[str, Any]:
             "languages": languages,
             "show_language_picker": len(languages) > 1,
             "user_is_anonymous": user.is_anonymous,
-            "user_info_url": (
-                None if is_feature_enabled("MENU_HIDE_USER_INFO") else "/user_info/"
-            ),
-            "user_logout_url": appbuilder.get_url_for_logout,
-            "user_login_url": appbuilder.get_url_for_login,
+            "user_info_url": user_info_url,
+            "user_logout_url": user_logout_url,
+            "user_login_url": user_login_url,
             "locale": session.get("locale", "en"),
         },
     }
@@ -500,9 +514,13 @@ def cached_common_bootstrap_data(  # pylint: disable=unused-argument
             )
         frontend_config["AUTH_PROVIDERS"] = oauth_providers
 
+    # JUPYTERHUB: Prefer JUPYTERHUB_SERVICE_PREFIX env var for dynamic prefixes
+    # This ensures bootstrap data includes the correct prefix even if APPLICATION_ROOT
+    # hasn't been set yet by AppRootMiddleware
+    jupyterhub_prefix = os.environ.get('JUPYTERHUB_SERVICE_PREFIX', '').rstrip('/')
     bootstrap_data = {
-        "application_root": app.config["APPLICATION_ROOT"],
-        "static_assets_prefix": app.config["STATIC_ASSETS_PREFIX"],
+        "application_root": jupyterhub_prefix or app.config.get("APPLICATION_ROOT", ""),
+        "static_assets_prefix": jupyterhub_prefix or app.config.get("STATIC_ASSETS_PREFIX", ""),
         "conf": frontend_config,
         "locale": language,
         "d3_format": app.config.get("D3_FORMAT"),

@@ -91,6 +91,7 @@ import ExploreResultsButton from '../ExploreResultsButton';
 import HighlightedSql from '../HighlightedSql';
 import PanelToolbar from 'src/components/PanelToolbar';
 import { ViewContribution } from 'src/SqlLab/contributions';
+import SaveToWorkspaceModal from '../SaveToWorkspaceModal';
 
 enum LimitingFactor {
   Query = 'QUERY',
@@ -217,6 +218,7 @@ const ResultSet = ({
   const [cachedData, setCachedData] = useState<Record<string, unknown>[]>([]);
   const [showSaveDatasetModal, setShowSaveDatasetModal] = useState(false);
   const [showStreamingModal, setShowStreamingModal] = useState(false);
+  const [showSaveToWorkspaceModal, setShowSaveToWorkspaceModal] = useState(false);
   const orderedColumnKeys = useMemo(
     () => query.results?.columns?.map(col => col.column_name) ?? EMPTY,
     [query.results?.columns],
@@ -462,9 +464,32 @@ const ResultSet = ({
             )}
             datasource={datasource}
           />
+          <SaveToWorkspaceModal
+            visible={showSaveToWorkspaceModal}
+            onHide={() => setShowSaveToWorkspaceModal(false)}
+            queryId={query.id}
+            queryName={query?.tab ?? undefined}
+            queryResultRows={query.rows}
+          />
           <PanelToolbar
             viewId={ViewContribution.Results}
-            defaultPrimaryActions={defaultPrimaryActions}
+            defaultPrimaryActions={
+              <>
+                {defaultPrimaryActions}
+                {csv && canExportData && (
+                  <Button
+                    buttonSize="small"
+                    variant="text"
+                    color="primary"
+                    icon={<Icons.SaveOutlined iconSize="m" />}
+                    tooltip={t('Save to Workspace')}
+                    aria-label={t('Save to Workspace')}
+                    data-test="save-to-workspace-button"
+                    onClick={() => setShowSaveToWorkspaceModal(true)}
+                  />
+                )}
+              </>
+            }
           />
         </ResultSetButtons>
       );
