@@ -24,7 +24,8 @@ import { staticAssetsPrefix } from 'src/utils/getBootstrapData';
  * @param path A string path to a resource
  */
 export function assetUrl(path: string): string {
-  return `${staticAssetsPrefix()}${path.startsWith('/') ? path : `/${path}`}`;
+  const safePath = path ?? '/';
+  return `${staticAssetsPrefix()}${safePath.startsWith('/') ? safePath : `/${safePath}`}`;
 }
 
 /**
@@ -33,6 +34,7 @@ export function assetUrl(path: string): string {
  * @param url_or_path A url or relative path to a resource
  */
 export function ensureStaticPrefix(url_or_path: string): string {
+  if (!url_or_path) return '';
   if (url_or_path.startsWith('/')) return assetUrl(url_or_path);
 
   return url_or_path;
