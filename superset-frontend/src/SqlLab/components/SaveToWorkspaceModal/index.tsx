@@ -26,7 +26,8 @@ import {
   Icons,
 } from '@superset-ui/core/components';
 import ProgressBar from '@superset-ui/core/components/ProgressBar';
-import { t, SupersetClient, getClientErrorObject } from '@superset-ui/core';
+import { t } from '@apache-superset/core';
+import { SupersetClient, getClientErrorObject } from '@superset-ui/core';
 import { styled } from '@apache-superset/core/ui';
 import { extendedDayjs as dayjs } from '@superset-ui/core/utils/dates';
 import { addSuccessToast, addDangerToast } from 'src/components/MessageToasts/actions';
