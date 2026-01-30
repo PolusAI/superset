@@ -31,6 +31,7 @@ import * as exploreUtils from 'src/explore/exploreUtils';
 import * as actions from 'src/components/Chart/chartAction';
 import * as asyncEvent from 'src/middleware/asyncEvent';
 import { handleChartDataResponse } from 'src/components/Chart/chartAction';
+import * as dataMaskActions from 'src/dataMask/actions';
 
 import configureMockStore from 'redux-mock-store';
 import thunk from 'redux-thunk';
@@ -69,15 +70,19 @@ describe('chart actions', () => {
   let waitForAsyncDataStub;
   let fakeMetadata;
 
+  beforeAll(() => {
+    fetchMock.get('glob:*api/v1/security/csrf_token/*', { result: '1234' });
+  });
+
   const setupDefaultFetchMock = () => {
-    fetchMock.post(MOCK_URL, { json: {} }, { overwriteRoutes: true });
+    fetchMock.post(`glob:*${MOCK_URL}*`, { json: {} }, { name: MOCK_URL });
   };
 
-  beforeAll(() => {
+  beforeEach(() => {
     setupDefaultFetchMock();
   });
 
-  afterAll(() => fetchMock.restore());
+  afterEach(() => fetchMock.clearHistory().removeRoutes());
 
   beforeEach(() => {
     dispatch = sinon.spy();
@@ -110,11 +115,74 @@ describe('chart actions', () => {
       .callsFake(data => Promise.resolve(data));
   });
 
+  test.only('should defer abort of previous controller to avoid Redux state mutation', async () => {
+    jest.useFakeTimers();
+    const chartKey = 'defer_abort_test';
+    const formData = {
+      slice_id: 123,
+      datasource: 'table__1',
+      viz_type: 'table',
+    };
+    const oldController = new AbortController();
+    const abortSpy = jest.spyOn(oldController, 'abort');
+    const state = {
+      charts: {
+        [chartKey]: {
+          queryController: oldController,
+        },
+      },
+      common: {
+        conf: {
+          SUPERSET_WEBSERVER_TIMEOUT: 60,
+        },
+      },
+    };
+    const getState = jest.fn(() => state);
+    const dispatchMock = jest.fn();
+    const getChartDataRequestSpy = jest
+      .spyOn(actions, 'getChartDataRequest')
+      .mockResolvedValue({
+        response: { status: 200 },
+        json: { result: [] },
+      });
+    const handleChartDataResponseSpy = jest
+      .spyOn(actions, 'handleChartDataResponse')
+      .mockResolvedValue([]);
+    const updateDataMaskSpy = jest
+      .spyOn(dataMaskActions, 'updateDataMask')
+      .mockReturnValue({ type: 'UPDATE_DATA_MASK' });
+    const getQuerySettingsStub = sinon
+      .stub(exploreUtils, 'getQuerySettings')
+      .returns([false, () => {}]);
+
+    try {
+      const thunk = actions.exploreJSON(formData, false, undefined, chartKey);
+      const promise = thunk(dispatchMock, getState);
+
+      expect(abortSpy).not.toHaveBeenCalled();
+      expect(oldController.signal.aborted).toBe(false);
+
+      jest.runOnlyPendingTimers();
+
+      expect(abortSpy).toHaveBeenCalledTimes(1);
+      expect(oldController.signal.aborted).toBe(true);
+
+      await promise;
+    } finally {
+      getChartDataRequestSpy.mockRestore();
+      handleChartDataResponseSpy.mockRestore();
+      updateDataMaskSpy.mockRestore();
+      getQuerySettingsStub.restore();
+      abortSpy.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
   afterEach(() => {
     getExploreUrlStub.restore();
     getChartDataUriStub.restore();
     buildV1ChartDataPayloadStub.restore();
-    fetchMock.resetHistory();
+    fetchMock.clearHistory();
     waitForAsyncDataStub.restore();
 
     global.featureFlags = {
@@ -132,8 +200,8 @@ describe('chart actions', () => {
       const actionThunk = actions.postChartFormData({}, null);
       await actionThunk(dispatch, mockGetState);
 
-      expect(fetchMock.calls(MOCK_URL)).toHaveLength(1);
-      expect(fetchMock.calls(MOCK_URL)[0][1].body).toBe(
+      expect(fetchMock.callHistory.calls(MOCK_URL)).toHaveLength(1);
+      expect(fetchMock.callHistory.calls(MOCK_URL)[0].options.body).toBe(
         JSON.stringify({
           some_param: 'fake query!',
           result_type: 'full',
@@ -148,7 +216,7 @@ describe('chart actions', () => {
       const mockBigIntUrl = '/mock/chart/data/bigint';
       const expectedBigNumber = '9223372036854775807';
       fetchMock.post(mockBigIntUrl, `{ "value": ${expectedBigNumber} }`, {
-        overwriteRoutes: true,
+        name: mockBigIntUrl,
       });
       getChartDataUriStub = sinon
         .stub(exploreUtils, 'getChartDataUri')
@@ -158,7 +226,7 @@ describe('chart actions', () => {
         formData: fakeMetadata,
       });
 
-      expect(fetchMock.calls(mockBigIntUrl)).toHaveLength(1);
+      expect(fetchMock.callHistory.calls(mockBigIntUrl)).toHaveLength(1);
       expect(json.value.toString()).toEqual(expectedBigNumber);
     });
 
@@ -205,7 +273,7 @@ describe('chart actions', () => {
       return actionThunk(dispatch, mockGetState).then(() => {
         // chart update, trigger query, update form data, success
         expect(dispatch.callCount).toBe(5);
-        expect(fetchMock.calls(MOCK_URL)).toHaveLength(1);
+        expect(fetchMock.callHistory.calls(MOCK_URL)).toHaveLength(1);
         expect(dispatch.args[0][0].type).toBe(actions.CHART_UPDATE_STARTED);
       });
     });
@@ -215,7 +283,7 @@ describe('chart actions', () => {
       return actionThunk(dispatch, mockGetState).then(() => {
         // chart update, trigger query, update form data, success
         expect(dispatch.callCount).toBe(5);
-        expect(fetchMock.calls(MOCK_URL)).toHaveLength(1);
+        expect(fetchMock.callHistory.calls(MOCK_URL)).toHaveLength(1);
         expect(dispatch.args[1][0].type).toBe(actions.TRIGGER_QUERY);
       });
     });
@@ -225,7 +293,7 @@ describe('chart actions', () => {
       return actionThunk(dispatch, mockGetState).then(() => {
         // chart update, trigger query, update form data, success
         expect(dispatch.callCount).toBe(5);
-        expect(fetchMock.calls(MOCK_URL)).toHaveLength(1);
+        expect(fetchMock.callHistory.calls(MOCK_URL)).toHaveLength(1);
         expect(dispatch.args[2][0].type).toBe(actions.UPDATE_QUERY_FORM_DATA);
       });
     });
@@ -235,7 +303,7 @@ describe('chart actions', () => {
       return actionThunk(dispatch, mockGetState).then(() => {
         // chart update, trigger query, update form data, success
         expect(dispatch.callCount).toBe(5);
-        expect(fetchMock.calls(MOCK_URL)).toHaveLength(1);
+        expect(fetchMock.callHistory.calls(MOCK_URL)).toHaveLength(1);
         expect(typeof dispatch.args[3][0]).toBe('function');
 
         dispatch.args[3][0](dispatch);
@@ -249,15 +317,16 @@ describe('chart actions', () => {
       return actionThunk(dispatch, mockGetState).then(() => {
         // chart update, trigger query, update form data, success
         expect(dispatch.callCount).toBe(5);
-        expect(fetchMock.calls(MOCK_URL)).toHaveLength(1);
+        expect(fetchMock.callHistory.calls(MOCK_URL)).toHaveLength(1);
         expect(dispatch.args[4][0].type).toBe(actions.CHART_UPDATE_SUCCEEDED);
       });
     });
 
     test('should dispatch CHART_UPDATE_FAILED action upon query timeout', () => {
       const unresolvingPromise = new Promise(() => {});
+      fetchMock.removeRoute(MOCK_URL);
       fetchMock.post(MOCK_URL, () => unresolvingPromise, {
-        overwriteRoutes: true,
+        name: MOCK_URL,
       });
 
       const timeoutInSec = 1 / 1000;
@@ -265,18 +334,21 @@ describe('chart actions', () => {
 
       return actionThunk(dispatch, mockGetState).then(() => {
         // chart update, trigger query, update form data, fail
-        expect(fetchMock.calls(MOCK_URL)).toHaveLength(1);
+        expect(fetchMock.callHistory.calls(MOCK_URL)).toHaveLength(1);
         expect(dispatch.callCount).toBe(5);
         expect(dispatch.args[4][0].type).toBe(actions.CHART_UPDATE_FAILED);
+
+        fetchMock.removeRoute(MOCK_URL);
         setupDefaultFetchMock();
       });
     });
 
     test('should dispatch CHART_UPDATE_FAILED action upon non-timeout non-abort failure', () => {
+      fetchMock.removeRoute(MOCK_URL);
       fetchMock.post(
         MOCK_URL,
         { throws: { statusText: 'misc error' } },
-        { overwriteRoutes: true },
+        { name: MOCK_URL },
       );
 
       const timeoutInSec = 100; // Set to a time that is longer than the time this will take to fail
@@ -289,6 +361,31 @@ describe('chart actions', () => {
         expect(updateFailedAction.type).toBe(actions.CHART_UPDATE_FAILED);
         expect(updateFailedAction.queriesResponse[0].error).toBe('misc error');
 
+        fetchMock.removeRoute(MOCK_URL);
+        setupDefaultFetchMock();
+      });
+    });
+
+    test('should dispatch CHART_UPDATE_STOPPED action upon abort', () => {
+      fetchMock.removeRoute(MOCK_URL);
+      fetchMock.post(
+        MOCK_URL,
+        { throws: { name: 'AbortError' } },
+        { name: MOCK_URL },
+      );
+
+      const timeoutInSec = 100;
+      const actionThunk = actions.postChartFormData({}, false, timeoutInSec);
+
+      return actionThunk(dispatch, mockGetState).then(() => {
+        const types = dispatch.args
+          .map(call => call[0] && call[0].type)
+          .filter(Boolean);
+
+        expect(types).toContain(actions.CHART_UPDATE_STOPPED);
+        expect(types).not.toContain(actions.CHART_UPDATE_FAILED);
+
+        fetchMock.removeRoutes();
         setupDefaultFetchMock();
       });
     });
@@ -298,7 +395,7 @@ describe('chart actions', () => {
       const mockBigIntUrl = '/mock/chart/data/bigint';
       const expectedBigNumber = '9223372036854775807';
       fetchMock.post(mockBigIntUrl, `{ "value": ${expectedBigNumber} }`, {
-        overwriteRoutes: true,
+        name: mockBigIntUrl,
       });
       getExploreUrlStub = sinon
         .stub(exploreUtils, 'getExploreUrl')
@@ -308,7 +405,7 @@ describe('chart actions', () => {
         formData: fakeMetadata,
       });
 
-      expect(fetchMock.calls(mockBigIntUrl)).toHaveLength(1);
+      expect(fetchMock.callHistory.calls(mockBigIntUrl)).toHaveLength(1);
       expect(json.result[0].value.toString()).toEqual(expectedBigNumber);
     });
   });

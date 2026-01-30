@@ -27,8 +27,9 @@ import {
   UnsavedChangesModal,
 } from '@superset-ui/core/components';
 import { AlteredSliceTag } from 'src/components';
-import { logging, SupersetClient, t } from '@superset-ui/core';
-import { css } from '@apache-superset/core/ui';
+import { SupersetClient, isMatrixifyEnabled } from '@superset-ui/core';
+import { logging } from '@apache-superset/core';
+import { css, t } from '@apache-superset/core/ui';
 import { chartPropShape } from 'src/dashboard/util/propShapes';
 import { Icons } from '@superset-ui/core/components/Icons';
 import PropertiesModal from 'src/explore/components/PropertiesModal';
@@ -40,6 +41,8 @@ import ReportModal from 'src/features/reports/ReportModal';
 import { deleteActiveReport } from 'src/features/reports/ReportModal/actions';
 import { useUnsavedChangesPrompt } from 'src/hooks/useUnsavedChangesPrompt';
 import { getChartFormDiffs } from 'src/utils/getChartFormDiffs';
+import { StreamingExportModal } from 'src/components/StreamingExportModal';
+import { Tag } from 'src/components/Tag';
 import { useExploreAdditionalActionsMenu } from '../useExploreAdditionalActionsMenu';
 import { useExploreMetadataBar } from './useExploreMetadataBar';
 
@@ -173,7 +176,7 @@ export const ExploreChartHeader = ({
     [redirectSQLLab, history],
   );
 
-  const [menu, isDropdownVisible, setIsDropdownVisible] =
+  const [menu, isDropdownVisible, setIsDropdownVisible, streamingExportState] =
     useExploreAdditionalActionsMenu(
       latestQueryFormData,
       canDownload,
@@ -270,6 +273,9 @@ export const ExploreChartHeader = ({
                 currentFormData={currentFormData}
               />
             ) : null}
+            {formData && isMatrixifyEnabled(formData) && (
+              <Tag name="Matrixified" color="purple" />
+            )}
             {metadataBar}
           </div>
         }
@@ -345,6 +351,14 @@ export const ExploreChartHeader = ({
         onHide={() => setShowUnsavedChangesModal(false)}
         onConfirmNavigation={handleConfirmNavigation}
         handleSave={handleSaveAndCloseModal}
+      />
+
+      <StreamingExportModal
+        visible={streamingExportState.isVisible}
+        onCancel={streamingExportState.onCancel}
+        onRetry={streamingExportState.onRetry}
+        onDownload={streamingExportState.onDownload}
+        progress={streamingExportState.progress}
       />
     </>
   );

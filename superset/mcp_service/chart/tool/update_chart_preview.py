@@ -24,9 +24,8 @@ import time
 from typing import Any, Dict
 
 from fastmcp import Context
+from superset_core.mcp import tool
 
-from superset.mcp_service.app import mcp
-from superset.mcp_service.auth import mcp_auth_hook
 from superset.mcp_service.chart.chart_utils import (
     analyze_chart_capabilities,
     analyze_chart_semantics,
@@ -38,15 +37,14 @@ from superset.mcp_service.chart.schemas import (
     AccessibilityMetadata,
     PerformanceMetadata,
     UpdateChartPreviewRequest,
-    URLPreview,
 )
-from superset.mcp_service.utils.url_utils import get_mcp_service_url
+from superset.mcp_service.utils.schema_utils import parse_request
 
 logger = logging.getLogger(__name__)
 
 
-@mcp.tool
-@mcp_auth_hook
+@tool(tags=["mutate"])
+@parse_request(UpdateChartPreviewRequest)
 def update_chart_preview(
     request: UpdateChartPreviewRequest, ctx: Context
 ) -> Dict[str, Any]:
@@ -56,7 +54,6 @@ def update_chart_preview(
     - Modifies cached form_data from generate_chart (save_chart=False)
     - Original form_data_key is invalidated, new one returned
     - LLM clients MUST display explore_url to users
-    - Embed preview_url as image: ![Chart Preview](preview_url)
 
     Use when:
     - Modifying preview before deciding to save
@@ -99,30 +96,9 @@ def update_chart_preview(
             high_contrast_available=False,
         )
 
-        # Generate previews if requested
-        previews = {}
-        if request.generate_preview and new_form_data_key:
-            try:
-                for format_type in request.preview_formats:
-                    if format_type == "url":
-                        # Generate screenshot URL using new form_data key
-                        mcp_base = get_mcp_service_url()
-                        preview_url = (
-                            f"{mcp_base}/screenshot/explore/{new_form_data_key}.png"
-                        )
-
-                        previews[format_type] = URLPreview(
-                            preview_url=preview_url,
-                            width=800,
-                            height=600,
-                            supports_interaction=False,
-                        )
-                    # Other formats would need form_data execution
-                    # which is more complex for preview-only mode
-
-            except Exception as e:
-                # Log warning but don't fail the entire request
-                logger.warning("Preview generation failed: %s", e)
+        # Note: Screenshot-based previews are not supported.
+        # Use the explore_url to view the chart interactively.
+        previews: Dict[str, Any] = {}
 
         # Return enhanced data
         result = {
